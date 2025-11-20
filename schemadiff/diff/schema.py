@@ -8,11 +8,6 @@ from graphql import (
     is_interface_type,
 )
 
-try:
-    from graphql.type.introspection import TypeResolvers
-except ImportError:
-    from graphql.type.introspection import TypeFieldResolvers as TypeResolvers  # graphql-core < 3.2.0
-
 from schemadiff.changes.directive import RemovedDirective, AddedDirective
 from schemadiff.changes.schema import (
     SchemaQueryTypeChanged,
@@ -31,6 +26,44 @@ from schemadiff.diff.interface import InterfaceType
 from schemadiff.diff.object_type import ObjectType
 from schemadiff.diff.union_type import UnionType
 from schemadiff.diff.input_object_type import InputObjectType
+
+
+def _get_type_resolvers():
+    """Get TypeResolvers with fallback for different graphql-core versions."""
+    # Try modern graphql-core (>= 3.2.0) - prefer official export if available
+    try:
+        from graphql.type.introspection import TypeResolvers
+        return TypeResolvers
+    except ImportError:
+        pass
+
+    # Try older graphql-core (< 3.2.0)
+    try:
+        from graphql.type.introspection import TypeFieldResolvers
+        return TypeFieldResolvers
+    except ImportError:
+        pass
+
+    # Fallback for graphql-core >= 3.2.7 where exports were removed
+    # This is only reached when both imports above fail
+    from graphql.type.introspection import introspection_types
+    from types import SimpleNamespace
+
+    type_type = introspection_types["__Type"]
+    return SimpleNamespace(
+        kind=type_type.fields["kind"].resolve,
+        name=type_type.fields["name"].resolve,
+        description=type_type.fields["description"].resolve,
+        fields=type_type.fields["fields"].resolve,
+        interfaces=type_type.fields["interfaces"].resolve,
+        possible_types=type_type.fields["possibleTypes"].resolve,
+        enum_values=type_type.fields["enumValues"].resolve,
+        input_fields=type_type.fields["inputFields"].resolve,
+        of_type=type_type.fields["ofType"].resolve,
+    )
+
+
+TypeResolvers = _get_type_resolvers()
 
 type_kind = partial(TypeResolvers.kind, _info={})
 
